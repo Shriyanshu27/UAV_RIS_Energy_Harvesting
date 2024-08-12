@@ -1,4 +1,4 @@
-# Energy Harvesting Reconfigurable Intelligent Surface for UAV Based on Robust Deep Reinforcement Learning
+# Energy Harvesting in RIS-UAV system using Deep Reinforcement Learning
 ## Requirements
 - Python: 3.6.13
 - Pytorch: 1.10.1
