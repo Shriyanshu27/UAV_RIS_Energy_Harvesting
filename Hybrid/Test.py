@@ -1,36 +1,32 @@
-import gym
-import gym_foo
 import numpy as np
-import math
-from stable_baselines3 import PPO
-from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
-import os
+from stable_baselines3 import PPO, DQN
+from hybrid_split_env import HybridSplitEnv
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-env = gym.make('foo-v0')
+# Load hybrid environment
+env = HybridSplitEnv(LoadData=True, Train=False)
 
-model = PPO.load("ppo_MultiUT_Time")
+# Load trained agents
+ppo_model = PPO.load("models/HybridPPO_Agent")
+dqn_model = DQN.load("models/HybridDQN_Agent")
 
-obs = env.reset()
-env.Train = False
-Rewards = []
-Harvest = []
-Received = []
-while True:
-    action, _states = model.predict(obs)
-    obs, rewards, dones, info = env.step(action)
-    info = list(info)[0]
+# Reset environment
+obs_cont, obs_disc = env.reset()
+done = False
+total_reward = 0
+step_count = 0
 
-    harvestEnergy = np.float(info.split(",")[0])
-    receivedEnergy = np.float(info.split(",")[1])
-    Rewards.append(rewards)
-    Harvest.append(harvestEnergy)
-    Received.append(receivedEnergy)
-    if dones==True:
-        break
-        
-    env.render()
+print("\n🧪 Running evaluation episode...\n")
 
-print(np.sum(Harvest)/np.sum(Received))
-np.savetxt("Rewards.csv", Rewards, delimiter=',')
-np.savetxt("Total_Reward.txt", [np.sum(Harvest)/np.sum(Received)])
+while not done:
+    action_cont, _ = ppo_model.predict(obs_cont, deterministic=True)
+    action_disc, _ = dqn_model.predict(obs_disc, deterministic=True)
+
+    (next_obs_cont, next_obs_disc), reward, done, info = env.step(action_cont, action_disc)
+
+    total_reward += reward
+    obs_cont, obs_disc = next_obs_cont, next_obs_disc
+    step_count += 1
+
+    print(f"Step {step_count:02d} | Reward: {reward:.4f}")
+
+print(f"\n✅ Evaluation complete. Total Episode Reward: {total_reward:.4f}\n")
