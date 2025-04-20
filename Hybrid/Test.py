@@ -1,41 +1,53 @@
 import numpy as np
 from stable_baselines3 import PPO, DQN
-from gym_foo.envs.foo_env import FooEnv
+from hybrid_split_env import HybridSplitEnv
 
-# Load trained PPO and DQN models
-ppo_model = PPO.load("models/PPO_Hybrid.zip")
-dqn_model = DQN.load("models/DQN_RIS_Agent.zip")
+# === Load Trained Models ===
+ppo_model = PPO.load("models/HybridPPO_Agent.zip")
+dqn_model = DQN.load("models/HybridDQN_Agent.zip")
 
-# Create the environment
-env = FooEnv(LoadData=True, Train=False)
+# === Initialize Hybrid Environment in Test Mode ===
+env = HybridSplitEnv(LoadData=True, Train=False)
 
-# Reset the environment
-obs = env.reset()
+# === Reset Environment ===
+obs_cont, obs_disc = env.reset()
 done = False
-total_reward = 0
+total_reward = 0.0
+step_count = 0
 
-print("🔁 Running PPO + DQN Hybrid Test Episode...\n")
+# === Track RIS state manually ===
+RIS_L = 16
+ris_state = np.zeros(RIS_L, dtype=np.float32)
 
+print("🚀 Running Hybrid PPO + DQN Agent in Test Mode...\n")
+
+# === Run Until Episode Ends ===
 while not done:
-    # Get continuous action from PPO
-    ppo_action, _ = ppo_model.predict(obs, deterministic=True)
+    # Predict continuous action from PPO
+    action_cont, _ = ppo_model.predict(obs_cont, deterministic=True)
 
-    # Get discrete RIS config from DQN
-    dqn_action, _ = dqn_model.predict(obs, deterministic=True)
+    # Construct full DQN observation: [distances (4) + RIS state (16)]
+    dqn_obs = np.concatenate([obs_disc, ris_state], dtype=np.float32)
 
-    # Set the DQN-generated RIS config inside env
-    env.set_ris_config(dqn_action)
+    # Predict RIS bit to flip from DQN
+    flip_index, _ = dqn_model.predict(dqn_obs.reshape(1, -1), deterministic=True)
+    ris_state[flip_index] = 1 - ris_state[flip_index]  # toggle reflect/harvest bit
 
-    # Merge actions into dict format expected by hybrid env
-    hybrid_action = {
-        "continuous": np.array(ppo_action),
-        "discrete": np.array(dqn_action)
-    }
+    # Step environment with PPO and updated RIS config
+    (next_obs_cont, next_obs_disc), reward, done, info = env.step(action_cont, ris_state)
 
-    # Step the environment
-    obs, reward, done, info = env.step(hybrid_action)
     total_reward += reward
+    step_count += 1
 
-    print(f"Step Reward: {reward:.4f} | Done: {done}")
+    # Logging
+    print(f"Step {step_count:02d} | Reward: {reward:.2f} | EH: {info.get('eh', 0):.2f} | Tau: {info.get('tau', 0):.2f}")
 
-print(f"\n✅ Test Complete. Total Episode Reward: {total_reward:.4f}")
+    # Update observations
+    obs_cont = next_obs_cont
+    obs_disc = next_obs_disc
+
+# === Summary ===
+print("\n✅ Test Complete!")
+print(f"📦 Total Steps: {step_count}")
+print(f"💰 Total Reward: {total_reward:.2f}")
+print(f"⚡ Final Energy Harvested: {info.get('eh_total', 'N/A')} units")
