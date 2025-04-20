@@ -65,19 +65,31 @@ class FooEnv(gym.Env):
         tau = action['continuous'][0]
         power = [mt.pow(10, ((x - 1) * 30 / 10 + 3)) for x in action['continuous'][1:4]]
         theta = action['continuous'][4:] * 2 * np.pi
-        omega = action['discrete']
+        omega = getattr(self, 'omega_override', action['discrete'])
         step = globe.get_value('step')
 
         reward, state, energy = self.env_state(step, tau, power, theta, omega)
         globe.set_value('step', step + 1)
         done = (step >= globe.get_value('t') - 1)
         state = state / np.sum(state)
+        if self.Train:
+            print(f"Step: {step}, Reward: {reward:.2f}, EH: {energy:.2f}, Tau: {tau:.2f}")
 
         return state, reward / (energy + 1e-10), done, {}
 
     def reset(self):
         globe.set_value('step', 0)
-        return np.random.rand(4)
+    
+        L_U = globe.get_value('UAV_Trajectory')[0]
+        L_AP = globe.get_value('L_AP')
+        UTs = [globe.get_value(f'UT_{i}')[0] for i in range(3)]
+    
+        dists = [np.linalg.norm(np.array(L_U) - np.array(L_AP))] + [
+            np.linalg.norm(np.array(L_U) - np.array(u)) for u in UTs
+        ]
+        radio_state = np.array(dists)
+        return radio_state / np.sum(radio_state)
+
 
     def render(self, mode='human'):
         pass
@@ -137,3 +149,6 @@ class FooEnv(gym.Env):
 
         dists = [np.linalg.norm(np.array(L_U) - np.array(L_AP))] + [np.linalg.norm(np.array(L_U) - np.array(u)) for u in UTs]
         return reward, np.array(dists), recv_energy
+
+    def set_ris_config(self, omega_array):
+        self.omega_override = np.array(omega_array)
