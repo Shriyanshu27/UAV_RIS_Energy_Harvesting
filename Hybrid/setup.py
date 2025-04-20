@@ -7,7 +7,7 @@ setup(
     author='Your Name',
     packages=find_packages(),
     install_requires=[
-        'gym>=0.21.0',
+        'gym==0.21.0',
         'numpy'
     ]
 )
